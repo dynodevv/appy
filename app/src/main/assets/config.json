@@ -1,0 +1,6 @@
+{
+  "url": "https://example.com",
+  "appName": "WebApp",
+  "version": "1.0",
+  "description": "Placeholder configuration file - will be replaced during APK generation"
+}
