@@ -163,7 +163,7 @@ fun HomeScreen(
 ) {
     var url by remember { mutableStateOf("") }
     var appName by remember { mutableStateOf("") }
-    var packageId by remember { mutableStateOf("com.webapp.app") }
+    var packageId by remember { mutableStateOf("com.appy.app") }
     var iconUri by remember { mutableStateOf<Uri?>(null) }
     var statusBarStyle by remember { mutableStateOf(StatusBarStyle.LIGHT) }
     var statusBarDropdownExpanded by remember { mutableStateOf(false) }
@@ -455,7 +455,8 @@ fun HomeScreen(
                     // Primary Compound Action Button for Build
                     PrimaryCompoundActionButton(
                         text = "Build APK",
-                        enabled = url.isNotBlank() && isAppNameValid && isPackageIdValid && buildState is BuildState.Idle,
+                        enabled = url.isNotBlank() && isAppNameValid && isPackageIdValid && 
+                                  (buildState is BuildState.Idle || buildState is BuildState.Success || buildState is BuildState.Error),
                         onClick = {
                             onBuildClick(
                                 ApkConfig(

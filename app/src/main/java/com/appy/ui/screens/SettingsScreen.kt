@@ -200,7 +200,9 @@ fun SettingsScreen(
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -221,7 +223,8 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
                     ) {
                         ContactButton(
                             icon = Icons.Default.Email,
@@ -233,6 +236,8 @@ fun SettingsScreen(
                                 context.startActivity(intent)
                             }
                         )
+
+                        Spacer(modifier = Modifier.width(16.dp))
 
                         ContactButton(
                             icon = Icons.Default.Language,

@@ -14,8 +14,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ProgressBar
+import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -24,7 +24,7 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
@@ -118,10 +118,6 @@ class MainActivity : AppCompatActivity() {
         
         // Load URL from config
         val url = config.optString("url", "https://example.com")
-        val appName = config.optString("appName", "")
-        if (appName.isNotEmpty()) {
-            title = appName
-        }
         webView.loadUrl(url)
     }
     
