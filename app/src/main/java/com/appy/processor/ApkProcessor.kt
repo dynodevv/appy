@@ -306,66 +306,65 @@ class ApkProcessor(private val context: Context) {
             val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, iconSize, iconSize, true)
             
             // Convert to PNG bytes
-            val outputStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-            val pngBytes = outputStream.toByteArray()
+            val bitmapOutputStream = ByteArrayOutputStream()
+            scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, bitmapOutputStream)
+            val pngBytes = bitmapOutputStream.toByteArray()
             
-            // Write to temp file
-            val tempFile = File(context.cacheDir, "icon_temp_${System.nanoTime()}.png")
-            tempFile.writeBytes(pngBytes)
+            Log.d("ApkProcessor", "Icon PNG size: ${pngBytes.size} bytes")
             
-            try {
-                ZipFile(apkFile).use { zipFile ->
-                    // List all entries for debugging
-                    val allPaths = zipFile.fileHeaders.map { it.fileName }
-                    Log.d("ApkProcessor", "All drawable entries: ${allPaths.filter { it.startsWith("res/drawable") }}")
-                    
-                    // Find and replace app_icon.png in drawable directories
-                    // The template uses @drawable/app_icon
-                    val drawablePaths = listOf(
-                        "res/drawable/app_icon.png",
-                        "res/drawable-v4/app_icon.png",
-                        "res/drawable-v21/app_icon.png",
-                        "res/drawable-v24/app_icon.png"
-                    )
-                    
-                    // Also check for any existing drawable PNG files
-                    val existingDrawables = allPaths.filter { 
-                        it.startsWith("res/drawable") && it.endsWith(".png") 
-                    }
-                    Log.d("ApkProcessor", "Existing drawable PNGs: $existingDrawables")
-                    
-                    // Replace existing drawable icon files
-                    for (path in existingDrawables) {
-                        Log.d("ApkProcessor", "Replacing icon at: $path")
-                        
-                        zipFile.removeFile(path)
-                        
-                        val zipParams = ZipParameters().apply {
-                            compressionMethod = CompressionMethod.STORE
-                            fileNameInZip = path
-                        }
-                        
-                        zipFile.addFile(tempFile, zipParams)
-                        Log.d("ApkProcessor", "Added new icon at $path (${pngBytes.size} bytes)")
-                    }
-                    
-                    // If no drawable icons found, add at standard path
-                    if (existingDrawables.isEmpty()) {
-                        Log.d("ApkProcessor", "No existing drawable icons, adding at res/drawable/app_icon.png")
-                        
-                        val zipParams = ZipParameters().apply {
-                            compressionMethod = CompressionMethod.STORE
-                            fileNameInZip = "res/drawable/app_icon.png"
-                        }
-                        
-                        zipFile.addFile(tempFile, zipParams)
-                    }
-                    
-                    Log.d("ApkProcessor", "Icon injection completed successfully")
+            ZipFile(apkFile).use { zipFile ->
+                // List all resource entries for debugging
+                val allPaths = zipFile.fileHeaders.map { it.fileName }
+                val drawableEntries = allPaths.filter { it.startsWith("res/drawable") }
+                val mipmapEntries = allPaths.filter { it.startsWith("res/mipmap") }
+                Log.d("ApkProcessor", "Drawable entries: $drawableEntries")
+                Log.d("ApkProcessor", "Mipmap entries: $mipmapEntries")
+                
+                // Find all icon files to replace (drawable AND mipmap)
+                val iconPaths = allPaths.filter { path ->
+                    (path.startsWith("res/drawable") || path.startsWith("res/mipmap")) &&
+                    path.endsWith(".png") &&
+                    !path.contains("_background") && // Skip background layers
+                    (path.contains("app_icon") || path.contains("ic_launcher"))
                 }
-            } finally {
-                tempFile.delete()
+                
+                Log.d("ApkProcessor", "Found icon paths to replace: $iconPaths")
+                
+                // Replace each icon file using stream API for correct path handling
+                for (path in iconPaths) {
+                    Log.d("ApkProcessor", "Replacing icon at: $path")
+                    
+                    // Remove existing file
+                    zipFile.removeFile(path)
+                    
+                    // Add new icon using stream to ensure correct path
+                    val zipParams = ZipParameters().apply {
+                        compressionMethod = CompressionMethod.STORE
+                        fileNameInZip = path
+                    }
+                    
+                    java.io.ByteArrayInputStream(pngBytes).use { inputStream ->
+                        zipFile.addStream(inputStream, zipParams)
+                    }
+                    
+                    Log.d("ApkProcessor", "Added new icon at $path")
+                }
+                
+                // If no icons found, add a default drawable icon
+                if (iconPaths.isEmpty()) {
+                    Log.d("ApkProcessor", "No icon files found, adding at res/drawable/app_icon.png")
+                    
+                    val zipParams = ZipParameters().apply {
+                        compressionMethod = CompressionMethod.STORE
+                        fileNameInZip = "res/drawable/app_icon.png"
+                    }
+                    
+                    java.io.ByteArrayInputStream(pngBytes).use { inputStream ->
+                        zipFile.addStream(inputStream, zipParams)
+                    }
+                }
+                
+                Log.d("ApkProcessor", "Icon injection completed successfully")
             }
             
             if (scaledBitmap != sourceBitmap) {
