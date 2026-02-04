@@ -46,7 +46,7 @@ class ApkProcessor(private val context: Context) {
         private const val TEMPLATE_APK = "base-web-template.apk"
         private const val CONFIG_FILE = "assets/config.json"
         private const val MANIFEST_FILE = "AndroidManifest.xml"
-        private const val KEYSTORE_FILE = "debug.jks"
+        private const val KEYSTORE_FILE = "debug.p12"
         private const val KEYSTORE_PASSWORD = "android"
         private const val KEY_ALIAS = "androiddebugkey"
         
@@ -356,7 +356,8 @@ class ApkProcessor(private val context: Context) {
      * Loads the keystore from assets
      */
     private fun loadKeyStore(): KeyStore {
-        val keyStore = KeyStore.getInstance("JKS")
+        // Use PKCS12 format which is supported on Android (JKS is not available on Android)
+        val keyStore = KeyStore.getInstance("PKCS12")
 
         context.assets.open(KEYSTORE_FILE).use { input ->
             keyStore.load(input, KEYSTORE_PASSWORD.toCharArray())
