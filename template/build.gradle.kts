@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
 }
 
 android {
@@ -31,14 +30,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 }
 
+// Pure Java project with zero external dependencies
+// All functionality uses Android framework classes only
 dependencies {
-    // Only use core-ktx for basic extensions
-    // WebView is part of the Android framework - no additional library needed
-    implementation(libs.androidx.core.ktx)
+    // No dependencies - uses only Android framework APIs
 }

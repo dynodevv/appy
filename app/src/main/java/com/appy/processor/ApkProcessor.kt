@@ -307,24 +307,22 @@ class ApkProcessor(private val context: Context) {
         try {
             ZipFile(apkFile).use { zipFile ->
                 // Find all launcher icon files in the APK (mipmap directories)
+                // Android APKs often use paths like "res/mipmap-hdpi-v4/ic_launcher.png"
                 val allHeaders = zipFile.fileHeaders
                 val iconPaths = allHeaders
                     .map { it.fileName }
                     .filter { path ->
-                        // Match mipmap icon paths including ic_launcher (but not ic_launcher_round or foreground/background)
+                        // Match mipmap icon paths for ic_launcher.png
+                        // Handles both "res/mipmap-hdpi/ic_launcher.png" and "res/mipmap-hdpi-v4/ic_launcher.png"
                         path.startsWith("res/mipmap-") && 
-                        path.endsWith(".png") &&
-                        (path.endsWith("/ic_launcher.png"))
+                        path.contains("ic_launcher.png") &&
+                        !path.contains("ic_launcher_round") &&
+                        !path.contains("foreground") &&
+                        !path.contains("background")
                     }
                 
-                // Debug: also look for any mipmap PNG files 
-                val allMipmapPngs = allHeaders
-                    .map { it.fileName }
-                    .filter { it.startsWith("res/mipmap-") && it.endsWith(".png") }
-                
-                // If we found specific icon paths, use those. Otherwise use our defaults.
+                // If no ic_launcher paths found, look for any mipmap PNG files
                 val pathsToReplace = if (iconPaths.isNotEmpty()) {
-                    // Build a map of found paths to their target sizes
                     iconPaths.associateWith { path ->
                         when {
                             path.contains("xxxhdpi") -> 192
@@ -332,22 +330,11 @@ class ApkProcessor(private val context: Context) {
                             path.contains("xhdpi") -> 96
                             path.contains("hdpi") -> 72
                             path.contains("mdpi") -> 48
-                            else -> 96 // default
-                        }
-                    }
-                } else if (allMipmapPngs.isNotEmpty()) {
-                    // Use whatever mipmap PNGs we found
-                    allMipmapPngs.associateWith { path ->
-                        when {
-                            path.contains("xxxhdpi") -> 192
-                            path.contains("xxhdpi") -> 144
-                            path.contains("xhdpi") -> 96
-                            path.contains("hdpi") -> 72
-                            path.contains("mdpi") -> 48
-                            else -> 96 // default
+                            else -> 96
                         }
                     }
                 } else {
+                    // Fallback to our predefined paths
                     ICON_SIZES
                 }
                 
@@ -355,7 +342,8 @@ class ApkProcessor(private val context: Context) {
                     throw IllegalStateException("No icon paths found in APK to replace")
                 }
                 
-                pathsToReplace.forEach { (path, size) ->
+                // Process each icon path
+                for ((path, size) in pathsToReplace) {
                     // Scale bitmap to target size
                     val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, size, size, true)
                     
@@ -365,13 +353,14 @@ class ApkProcessor(private val context: Context) {
                     val pngBytes = outputStream.toByteArray()
                     
                     // Write to temp file
-                    val tempFile = File(context.cacheDir, "icon_${size}.png")
+                    val tempFile = File(context.cacheDir, "icon_temp_${size}.png")
                     tempFile.writeBytes(pngBytes)
                     
                     try {
-                        // Remove existing icon if present
+                        // Check if the path exists in the APK
                         val existingHeader = zipFile.getFileHeader(path)
                         if (existingHeader != null) {
+                            // Remove existing icon
                             zipFile.removeFile(path)
                         }
                         

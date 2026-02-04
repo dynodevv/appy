@@ -210,8 +210,17 @@ class MainActivity : ComponentActivity() {
      */
     @Suppress("DEPRECATION")
     private fun updateStatusBarAppearance(isDarkTheme: Boolean) {
+        // Set window background color to match theme for predictive back gesture scrim
+        // This affects the "reveal" color during the back gesture animation
+        if (isDarkTheme) {
+            window.decorView.setBackgroundColor(Color.parseColor("#1C1B1F")) // Dark background
+            window.setNavigationBarColor(Color.parseColor("#1C1B1F"))
+        } else {
+            window.decorView.setBackgroundColor(Color.parseColor("#FEFBFF")) // Light background
+            window.setNavigationBarColor(Color.parseColor("#FEFBFF"))
+        }
+        
         // Update edge-to-edge with appropriate system bar styles for the theme
-        // This ensures the predictive back gesture overlay matches the theme
         if (isDarkTheme) {
             enableEdgeToEdge(
                 statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
