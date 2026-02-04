@@ -30,7 +30,7 @@ import java.util.jar.Manifest
  */
 sealed class ApkProcessingResult {
     data class Progress(val progress: Float, val message: String) : ApkProcessingResult()
-    data class Success(val outputPath: String) : ApkProcessingResult()
+    data class ReadyToSave(val tempFilePath: String, val suggestedFileName: String) : ApkProcessingResult()
     data class Error(val message: String) : ApkProcessingResult()
 }
 
@@ -51,7 +51,6 @@ class ApkProcessor(private val context: Context) {
         private const val KEYSTORE_FILE = "debug.jks"
         private const val KEYSTORE_PASSWORD = "android"
         private const val KEY_ALIAS = "androiddebugkey"
-        private const val OUTPUT_DIR = "generated_apks"
         
         // Icon sizes for different densities
         private val ICON_SIZES = mapOf(
@@ -65,7 +64,7 @@ class ApkProcessor(private val context: Context) {
 
     /**
      * Generates an APK from the template with the specified configuration
-     * Emits progress updates as Flow
+     * Emits progress updates as Flow, ending with ReadyToSave containing temp file path
      */
     fun generateApk(
         url: String,
@@ -80,10 +79,9 @@ class ApkProcessor(private val context: Context) {
             val templateFile = copyTemplateToCache()
             emit(ApkProcessingResult.Progress(0.2f, "Template extracted"))
 
-            // Step 2: Create output directory
-            val outputDir = getOutputDirectory()
+            // Step 2: Create output in cache directory (temporary)
             val sanitizedName = sanitizeFileName(appName)
-            val outputFile = File(outputDir, "${sanitizedName}_${System.currentTimeMillis()}.apk")
+            val outputFile = File(context.cacheDir, "${sanitizedName}_${System.currentTimeMillis()}.apk")
 
             emit(ApkProcessingResult.Progress(0.3f, "Modifying configuration..."))
 
@@ -104,16 +102,51 @@ class ApkProcessor(private val context: Context) {
             val signedApk = signApk(outputFile)
             emit(ApkProcessingResult.Progress(0.9f, "APK signed"))
 
-            // Cleanup
+            // Cleanup template
             templateFile.delete()
 
             emit(ApkProcessingResult.Progress(1.0f, "Complete!"))
-            emit(ApkProcessingResult.Success(signedApk.absolutePath))
+            
+            // Emit ReadyToSave with temp file path and suggested filename
+            val suggestedFileName = "${sanitizedName}.apk"
+            emit(ApkProcessingResult.ReadyToSave(signedApk.absolutePath, suggestedFileName))
 
         } catch (e: Exception) {
             emit(ApkProcessingResult.Error("Failed to generate APK: ${e.message}"))
         }
     }.flowOn(Dispatchers.IO)
+    
+    /**
+     * Result class for save operation
+     */
+    sealed class SaveResult {
+        data object Success : SaveResult()
+        data class Error(val message: String) : SaveResult()
+    }
+    
+    /**
+     * Copies the generated APK from cache to the user-selected destination
+     */
+    suspend fun saveApkToUri(tempFilePath: String, destinationUri: Uri): SaveResult = withContext(Dispatchers.IO) {
+        try {
+            val tempFile = File(tempFilePath)
+            if (!tempFile.exists()) {
+                return@withContext SaveResult.Error("Temporary file not found")
+            }
+            
+            context.contentResolver.openOutputStream(destinationUri)?.use { outputStream ->
+                tempFile.inputStream().use { inputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            } ?: return@withContext SaveResult.Error("Could not open destination file")
+            
+            // Clean up temp file after successful copy
+            tempFile.delete()
+            SaveResult.Success
+        } catch (e: Exception) {
+            SaveResult.Error(e.message ?: "Unknown error occurred")
+        }
+    }
 
     /**
      * Copies the template APK from assets to the cache directory
@@ -128,17 +161,6 @@ class ApkProcessor(private val context: Context) {
         }
 
         cacheFile
-    }
-
-    /**
-     * Gets or creates the output directory for generated APKs
-     */
-    private fun getOutputDirectory(): File {
-        val outputDir = File(context.getExternalFilesDir(null), OUTPUT_DIR)
-        if (!outputDir.exists()) {
-            outputDir.mkdirs()
-        }
-        return outputDir
     }
 
     /**
@@ -371,26 +393,5 @@ class ApkProcessor(private val context: Context) {
     private fun sanitizeFileName(name: String): String {
         return name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
             .take(50)
-    }
-
-    /**
-     * Gets the list of generated APKs
-     */
-    fun getGeneratedApks(): List<File> {
-        return getOutputDirectory().listFiles()?.toList() ?: emptyList()
-    }
-
-    /**
-     * Deletes a generated APK
-     */
-    fun deleteApk(file: File): Boolean {
-        return file.delete()
-    }
-
-    /**
-     * Clears all generated APKs
-     */
-    fun clearGeneratedApks() {
-        getOutputDirectory().listFiles()?.forEach { it.delete() }
     }
 }
