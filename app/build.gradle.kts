@@ -71,6 +71,8 @@ dependencies {
     implementation(libs.zip4j)
     implementation(libs.coil.compose)
     implementation(libs.apksig)
+    implementation(libs.datastore.preferences)
+    implementation(libs.navigation.compose)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

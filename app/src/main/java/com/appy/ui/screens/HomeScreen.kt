@@ -42,13 +42,19 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -75,13 +81,22 @@ import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 
 /**
+ * Status bar style options for generated APK
+ */
+enum class StatusBarStyle(val displayName: String) {
+    LIGHT("Light (dark icons)"),
+    DARK("Dark (light icons)")
+}
+
+/**
  * Data class for APK configuration
  */
 data class ApkConfig(
     val url: String,
     val appName: String,
     val packageId: String,
-    val iconUri: Uri?
+    val iconUri: Uri?,
+    val statusBarStyle: StatusBarStyle = StatusBarStyle.LIGHT
 )
 
 /**
@@ -143,12 +158,15 @@ private fun isValidAppName(appName: String): Boolean {
 @Composable
 fun HomeScreen(
     buildState: BuildState = BuildState.Idle,
-    onBuildClick: (ApkConfig) -> Unit = {}
+    onBuildClick: (ApkConfig) -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     var url by remember { mutableStateOf("") }
     var appName by remember { mutableStateOf("") }
     var packageId by remember { mutableStateOf("com.webapp.app") }
     var iconUri by remember { mutableStateOf<Uri?>(null) }
+    var statusBarStyle by remember { mutableStateOf(StatusBarStyle.LIGHT) }
+    var statusBarDropdownExpanded by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val scrollState = rememberScrollState()
     
@@ -186,6 +204,15 @@ fun HomeScreen(
                             ),
                             color = MaterialTheme.colorScheme.primary
                         )
+                    },
+                    actions = {
+                        IconButton(onClick = onSettingsClick) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = Color.Transparent
@@ -359,6 +386,47 @@ fun HomeScreen(
                         }
                     }
 
+                    // Status Bar Style Dropdown
+                    Text(
+                        text = "Status Bar Style",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    ExposedDropdownMenuBox(
+                        expanded = statusBarDropdownExpanded,
+                        onExpandedChange = { statusBarDropdownExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = statusBarStyle.displayName,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = statusBarDropdownExpanded) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            shape = MaterialTheme.shapes.large
+                        )
+                        ExposedDropdownMenu(
+                            expanded = statusBarDropdownExpanded,
+                            onDismissRequest = { statusBarDropdownExpanded = false }
+                        ) {
+                            StatusBarStyle.entries.forEach { style ->
+                                DropdownMenuItem(
+                                    text = { Text(style.displayName) },
+                                    onClick = {
+                                        statusBarStyle = style
+                                        statusBarDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     // Info note about customization
                     Row(
                         modifier = Modifier
@@ -394,7 +462,8 @@ fun HomeScreen(
                                     url = url,
                                     appName = appName,
                                     packageId = packageId,
-                                    iconUri = iconUri
+                                    iconUri = iconUri,
+                                    statusBarStyle = statusBarStyle
                                 )
                             )
                         }

@@ -8,34 +8,57 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.appy.data.SettingsRepository
 import com.appy.processor.ApkProcessor
 import com.appy.processor.ApkProcessingResult
 import com.appy.ui.screens.BuildState
 import com.appy.ui.screens.HomeScreen
+import com.appy.ui.screens.SettingsScreen
+import com.appy.ui.screens.ThemeMode
 import com.appy.ui.theme.AppyTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var apkProcessor: ApkProcessor
+    private lateinit var settingsRepository: SettingsRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         apkProcessor = ApkProcessor(applicationContext)
+        settingsRepository = SettingsRepository(applicationContext)
 
         setContent {
-            AppyTheme {
+            val themeMode by settingsRepository.themeModeFlow.collectAsState(initial = ThemeMode.SYSTEM)
+            val materialYouEnabled by settingsRepository.materialYouFlow.collectAsState(initial = true)
+            val scope = rememberCoroutineScope()
+            
+            val isDarkTheme = when (themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+            
+            AppyTheme(
+                darkTheme = isDarkTheme,
+                dynamicColor = materialYouEnabled
+            ) {
+                val navController = rememberNavController()
                 var buildState by remember { mutableStateOf<BuildState>(BuildState.Idle) }
                 var pendingTempFilePath by remember { mutableStateOf<String?>(null) }
-                val scope = rememberCoroutineScope()
 
                 // File picker launcher for saving APK
                 val saveFileLauncher = rememberLauncherForActivityResult(
@@ -74,39 +97,69 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                HomeScreen(
-                    buildState = buildState,
-                    onBuildClick = { config ->
-                        scope.launch {
-                            buildState = BuildState.Building(0f, "Starting...")
+                NavHost(
+                    navController = navController,
+                    startDestination = "home"
+                ) {
+                    composable("home") {
+                        HomeScreen(
+                            buildState = buildState,
+                            onBuildClick = { config ->
+                                scope.launch {
+                                    buildState = BuildState.Building(0f, "Starting...")
 
-                            apkProcessor.generateApk(
-                                url = config.url,
-                                appName = config.appName,
-                                packageId = config.packageId,
-                                iconUri = config.iconUri
-                            ).collect { result ->
-                                when (result) {
-                                    is ApkProcessingResult.Progress -> {
-                                        buildState = BuildState.Building(
-                                            result.progress,
-                                            result.message
-                                        )
-                                    }
-                                    is ApkProcessingResult.ReadyToSave -> {
-                                        buildState = BuildState.ReadyToSave(
-                                            result.tempFilePath,
-                                            result.suggestedFileName
-                                        )
-                                    }
-                                    is ApkProcessingResult.Error -> {
-                                        buildState = BuildState.Error(result.message)
+                                    apkProcessor.generateApk(
+                                        url = config.url,
+                                        appName = config.appName,
+                                        packageId = config.packageId,
+                                        iconUri = config.iconUri,
+                                        statusBarDark = config.statusBarStyle == com.appy.ui.screens.StatusBarStyle.DARK
+                                    ).collect { result ->
+                                        when (result) {
+                                            is ApkProcessingResult.Progress -> {
+                                                buildState = BuildState.Building(
+                                                    result.progress,
+                                                    result.message
+                                                )
+                                            }
+                                            is ApkProcessingResult.ReadyToSave -> {
+                                                buildState = BuildState.ReadyToSave(
+                                                    result.tempFilePath,
+                                                    result.suggestedFileName
+                                                )
+                                            }
+                                            is ApkProcessingResult.Error -> {
+                                                buildState = BuildState.Error(result.message)
+                                            }
+                                        }
                                     }
                                 }
+                            },
+                            onSettingsClick = {
+                                navController.navigate("settings")
                             }
-                        }
+                        )
                     }
-                )
+                    composable("settings") {
+                        SettingsScreen(
+                            currentThemeMode = themeMode,
+                            onThemeModeChange = { newMode ->
+                                scope.launch {
+                                    settingsRepository.setThemeMode(newMode)
+                                }
+                            },
+                            materialYouEnabled = materialYouEnabled,
+                            onMaterialYouChange = { enabled ->
+                                scope.launch {
+                                    settingsRepository.setMaterialYouEnabled(enabled)
+                                }
+                            },
+                            onNavigateBack = {
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                }
             }
         }
     }

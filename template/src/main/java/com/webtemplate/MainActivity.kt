@@ -2,8 +2,11 @@ package com.webtemplate
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.WindowInsetsController
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -29,8 +32,42 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Load config first to get status bar settings
+        val config = loadConfig()
+        val statusBarDark = config.optBoolean("statusBarDark", false)
+        
         // Enable edge-to-edge but we'll handle insets manually
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        
+        // Set status bar appearance based on config
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let { controller ->
+                if (statusBarDark) {
+                    // Dark status bar with light icons
+                    controller.setSystemBarsAppearance(
+                        0,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    )
+                    window.statusBarColor = Color.parseColor("#1C1B1F")
+                } else {
+                    // Light status bar with dark icons
+                    controller.setSystemBarsAppearance(
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    )
+                    window.statusBarColor = Color.parseColor("#F5F5F5")
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            if (statusBarDark) {
+                window.statusBarColor = Color.parseColor("#1C1B1F")
+                window.decorView.systemUiVisibility = 0
+            } else {
+                window.statusBarColor = Color.parseColor("#F5F5F5")
+                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            }
+        }
         
         // Create layout programmatically
         val rootLayout = FrameLayout(this).apply {
@@ -38,6 +75,8 @@ class MainActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+            // Set background color to match status bar
+            setBackgroundColor(if (statusBarDark) Color.parseColor("#1C1B1F") else Color.parseColor("#F5F5F5"))
         }
         
         // Create WebView
@@ -76,7 +115,26 @@ class MainActivity : AppCompatActivity() {
         
         setupWebView()
         setupBackNavigation()
-        loadUrlFromConfig()
+        
+        // Load URL from config
+        val url = config.optString("url", "https://example.com")
+        val appName = config.optString("appName", "")
+        if (appName.isNotEmpty()) {
+            title = appName
+        }
+        webView.loadUrl(url)
+    }
+    
+    private fun loadConfig(): JSONObject {
+        return try {
+            val configStream = assets.open("config.json")
+            val reader = BufferedReader(InputStreamReader(configStream))
+            val configContent = reader.readText()
+            reader.close()
+            JSONObject(configContent)
+        } catch (e: Exception) {
+            JSONObject()
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -130,28 +188,5 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
-    }
-
-    private fun loadUrlFromConfig() {
-        try {
-            val configStream = assets.open("config.json")
-            val reader = BufferedReader(InputStreamReader(configStream))
-            val configContent = reader.readText()
-            reader.close()
-            
-            val config = JSONObject(configContent)
-            val url = config.optString("url", "https://example.com")
-            
-            // Update title if app name is provided
-            val appName = config.optString("appName", "")
-            if (appName.isNotEmpty()) {
-                title = appName
-            }
-            
-            webView.loadUrl(url)
-        } catch (e: Exception) {
-            // Fallback URL if config loading fails
-            webView.loadUrl("https://example.com")
-        }
     }
 }

@@ -75,7 +75,8 @@ class ApkProcessor(private val context: Context) {
         url: String,
         appName: String = "WebApp",
         packageId: String = "com.webapp.app",
-        iconUri: Uri? = null
+        iconUri: Uri? = null,
+        statusBarDark: Boolean = false
     ): Flow<ApkProcessingResult> = flow {
         try {
             emit(ApkProcessingResult.Progress(0.1f, "Preparing template..."))
@@ -91,7 +92,7 @@ class ApkProcessor(private val context: Context) {
             emit(ApkProcessingResult.Progress(0.3f, "Modifying configuration..."))
 
             // Step 3: Modify the APK (inject config.json)
-            modifyApk(templateFile, outputFile, url, appName, packageId)
+            modifyApk(templateFile, outputFile, url, appName, packageId, statusBarDark)
             emit(ApkProcessingResult.Progress(0.5f, "Configuration injected"))
 
             // Step 4: Inject custom icon if provided
@@ -180,7 +181,8 @@ class ApkProcessor(private val context: Context) {
         outputFile: File,
         url: String,
         appName: String,
-        packageId: String
+        packageId: String,
+        statusBarDark: Boolean
     ) = withContext(Dispatchers.IO) {
         // Copy template to output location
         templateFile.copyTo(outputFile, overwrite = true)
@@ -190,6 +192,7 @@ class ApkProcessor(private val context: Context) {
             put("url", url)
             put("appName", appName)
             put("packageId", packageId)
+            put("statusBarDark", statusBarDark)
             put("generatedAt", System.currentTimeMillis())
             put("version", "1.0")
         }
@@ -303,7 +306,30 @@ class ApkProcessor(private val context: Context) {
 
         try {
             ZipFile(apkFile).use { zipFile ->
-                ICON_SIZES.forEach { (path, size) ->
+                // First, let's find all mipmap icon files in the APK
+                val allHeaders = zipFile.fileHeaders
+                val iconPaths = allHeaders
+                    .map { it.fileName }
+                    .filter { it.contains("mipmap") && it.contains("ic_launcher") && it.endsWith(".png") }
+                
+                // If we found icon paths, use those. Otherwise, use default paths.
+                val pathsToReplace = if (iconPaths.isNotEmpty()) {
+                    // Build a map of found paths to their target sizes
+                    iconPaths.associateWith { path ->
+                        when {
+                            path.contains("xxxhdpi") -> 192
+                            path.contains("xxhdpi") -> 144
+                            path.contains("xhdpi") -> 96
+                            path.contains("hdpi") -> 72
+                            path.contains("mdpi") -> 48
+                            else -> 96 // default
+                        }
+                    }
+                } else {
+                    ICON_SIZES
+                }
+                
+                pathsToReplace.forEach { (path, size) ->
                     // Scale bitmap to target size
                     val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, size, size, true)
                     
