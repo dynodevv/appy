@@ -40,4 +40,6 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation("androidx.activity:activity-ktx:1.9.3")
+    // Note: WebView is part of the Android framework - no additional library needed
+    // androidx.webkit is optional and only needed for advanced WebView features
 }
