@@ -293,16 +293,15 @@ class ApkProcessor(private val context: Context) {
 
     /**
      * Injects custom icon into the APK at various densities
+     * Throws exception if icon injection fails
      */
     private suspend fun injectIcon(apkFile: File, iconUri: Uri) = withContext(Dispatchers.IO) {
+        // Load the source bitmap with proper resource handling
+        val sourceBitmap = context.contentResolver.openInputStream(iconUri)?.use { inputStream ->
+            BitmapFactory.decodeStream(inputStream)
+        } ?: throw IllegalStateException("Could not load icon image. Please try a different image file.")
+
         try {
-            // Load the source bitmap with proper resource handling
-            val sourceBitmap = context.contentResolver.openInputStream(iconUri)?.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream)
-            }
-
-            if (sourceBitmap == null) return@withContext
-
             ZipFile(apkFile).use { zipFile ->
                 ICON_SIZES.forEach { (path, size) ->
                     // Scale bitmap to target size
@@ -319,7 +318,8 @@ class ApkProcessor(private val context: Context) {
                     
                     try {
                         // Remove existing icon if present
-                        if (zipFile.getFileHeader(path) != null) {
+                        val existingHeader = zipFile.getFileHeader(path)
+                        if (existingHeader != null) {
                             zipFile.removeFile(path)
                         }
                         
@@ -339,10 +339,8 @@ class ApkProcessor(private val context: Context) {
                     }
                 }
             }
-
+        } finally {
             sourceBitmap.recycle()
-        } catch (e: Exception) {
-            // Icon injection is optional, continue if it fails
         }
     }
 
