@@ -306,13 +306,23 @@ class ApkProcessor(private val context: Context) {
 
         try {
             ZipFile(apkFile).use { zipFile ->
-                // First, let's find all mipmap icon files in the APK
+                // Find all launcher icon files in the APK (mipmap directories)
                 val allHeaders = zipFile.fileHeaders
                 val iconPaths = allHeaders
                     .map { it.fileName }
-                    .filter { it.contains("mipmap") && it.contains("ic_launcher") && it.endsWith(".png") }
+                    .filter { path ->
+                        // Match mipmap icon paths including ic_launcher (but not ic_launcher_round or foreground/background)
+                        path.startsWith("res/mipmap-") && 
+                        path.endsWith(".png") &&
+                        (path.endsWith("/ic_launcher.png"))
+                    }
                 
-                // If we found icon paths, use those. Otherwise, use default paths.
+                // Debug: also look for any mipmap PNG files 
+                val allMipmapPngs = allHeaders
+                    .map { it.fileName }
+                    .filter { it.startsWith("res/mipmap-") && it.endsWith(".png") }
+                
+                // If we found specific icon paths, use those. Otherwise use our defaults.
                 val pathsToReplace = if (iconPaths.isNotEmpty()) {
                     // Build a map of found paths to their target sizes
                     iconPaths.associateWith { path ->
@@ -325,8 +335,24 @@ class ApkProcessor(private val context: Context) {
                             else -> 96 // default
                         }
                     }
+                } else if (allMipmapPngs.isNotEmpty()) {
+                    // Use whatever mipmap PNGs we found
+                    allMipmapPngs.associateWith { path ->
+                        when {
+                            path.contains("xxxhdpi") -> 192
+                            path.contains("xxhdpi") -> 144
+                            path.contains("xhdpi") -> 96
+                            path.contains("hdpi") -> 72
+                            path.contains("mdpi") -> 48
+                            else -> 96 // default
+                        }
+                    }
                 } else {
                     ICON_SIZES
+                }
+                
+                if (pathsToReplace.isEmpty()) {
+                    throw IllegalStateException("No icon paths found in APK to replace")
                 }
                 
                 pathsToReplace.forEach { (path, size) ->

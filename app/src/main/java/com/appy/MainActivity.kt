@@ -1,5 +1,6 @@
 package com.appy
 
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -7,6 +8,7 @@ import android.view.View
 import android.view.WindowInsetsController
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -204,22 +206,40 @@ class MainActivity : ComponentActivity() {
     /**
      * Updates the status bar appearance (icon color) based on the current theme.
      * For light themes, uses dark icons. For dark themes, uses light icons.
+     * Also sets up appropriate scrim colors for predictive back gesture.
      */
     @Suppress("DEPRECATION")
     private fun updateStatusBarAppearance(isDarkTheme: Boolean) {
+        // Update edge-to-edge with appropriate system bar styles for the theme
+        // This ensures the predictive back gesture overlay matches the theme
+        if (isDarkTheme) {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+                navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
+            )
+        } else {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+                navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+            )
+        }
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 if (isDarkTheme) {
                     // Dark theme: clear the light appearance flag (use light/white icons)
                     controller.setSystemBarsAppearance(
                         0,
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or 
+                        WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                     )
                 } else {
                     // Light theme: set light appearance flag (use dark icons)
                     controller.setSystemBarsAppearance(
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                        WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                        WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                     )
                 }
             }

@@ -1,10 +1,12 @@
 package com.webtemplate
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsetsController
 import android.webkit.WebChromeClient
@@ -14,17 +16,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ProgressBar
-import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-class MainActivity : ComponentActivity() {
+class MainActivity : Activity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
@@ -35,9 +31,6 @@ class MainActivity : ComponentActivity() {
         // Load config first to get status bar settings
         val config = loadConfig()
         val statusBarDark = config.optBoolean("statusBarDark", false)
-        
-        // Enable edge-to-edge but we'll handle insets manually
-        WindowCompat.setDecorFitsSystemWindows(window, false)
         
         // Set status bar appearance based on config
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -77,6 +70,8 @@ class MainActivity : ComponentActivity() {
             )
             // Set background color to match status bar
             setBackgroundColor(if (statusBarDark) Color.parseColor("#1C1B1F") else Color.parseColor("#F5F5F5"))
+            // Add padding for status bar
+            fitsSystemWindows = true
         }
         
         // Create WebView
@@ -103,18 +98,7 @@ class MainActivity : ComponentActivity() {
         rootLayout.addView(progressBar)
         setContentView(rootLayout)
         
-        // Apply window insets to avoid content behind status bar and navigation bar
-        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(
-                top = insets.top,
-                bottom = insets.bottom
-            )
-            windowInsets
-        }
-        
         setupWebView()
-        setupBackNavigation()
         
         // Load URL from config
         val url = config.optString("url", "https://example.com")
@@ -173,16 +157,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun setupBackNavigation() {
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (webView.canGoBack()) {
-                    webView.goBack()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                }
-            }
-        })
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
+    }
+    
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
+            webView.goBack()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }
