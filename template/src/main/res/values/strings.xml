@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Placeholder name - will be replaced with custom app name during APK generation -->
+    <!-- Must be long enough to accommodate custom names (46 chars) -->
+    <string name="app_name">AppyGeneratedWebApplicationPlaceholderNameHere</string>
+</resources>

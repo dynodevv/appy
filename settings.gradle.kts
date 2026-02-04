@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Appy"
 include(":app")
+include(":template")

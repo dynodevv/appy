@@ -9,7 +9,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.appy"
+        applicationId = "com.prism.appy"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -69,6 +69,25 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.zip4j)
+    implementation(libs.coil.compose)
+    implementation(libs.apksig)
+    implementation(libs.datastore.preferences)
+    implementation(libs.navigation.compose)
 
     debugImplementation(libs.androidx.ui.tooling)
+}
+
+// Task to copy the template APK to the app's assets folder
+tasks.register<Copy>("copyTemplateApk") {
+    dependsOn(":template:assembleRelease")
+    from("${project(":template").layout.buildDirectory.get()}/outputs/apk/release/") {
+        include("*.apk")
+    }
+    into("src/main/assets")
+    rename { "base-web-template.apk" }
+}
+
+// Make sure to copy template APK before processing assets
+tasks.matching { it.name.startsWith("merge") && it.name.contains("Assets") }.configureEach {
+    dependsOn("copyTemplateApk")
 }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WebTemplate" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <!-- Use a light gray for status bar to be visible -->
+        <item name="android:statusBarColor">#F5F5F5</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <!-- Use dark icons on light status bar -->
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

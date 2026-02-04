@@ -46,6 +46,7 @@ render.experimental.xml
 *.jks
 *.keystore
 !debug.keystore
+!**/assets/debug.jks
 
 # Google Services (e.g. APIs or Firebase)
 google-services.json

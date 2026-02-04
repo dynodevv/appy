@@ -1,5 +1,8 @@
 package com.appy.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.animateFloatAsState
@@ -9,7 +12,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,20 +27,34 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -43,7 +63,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,11 +72,32 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import coil.compose.rememberAsyncImagePainter
+
+/**
+ * Status bar style options for generated APK
+ */
+enum class StatusBarStyle(val displayName: String) {
+    LIGHT("Light (dark icons)"),
+    DARK("Dark (light icons)")
+}
+
+/**
+ * Data class for APK configuration
+ */
+data class ApkConfig(
+    val url: String,
+    val appName: String,
+    val packageId: String,
+    val iconUri: Uri?,
+    val statusBarStyle: StatusBarStyle = StatusBarStyle.LIGHT
+)
 
 /**
  * Build state for tracking APK generation progress
@@ -65,8 +105,45 @@ import androidx.compose.ui.unit.dp
 sealed class BuildState {
     data object Idle : BuildState()
     data class Building(val progress: Float, val message: String) : BuildState()
+    data class ReadyToSave(val tempFilePath: String, val suggestedFileName: String) : BuildState()
     data object Success : BuildState()
     data class Error(val message: String) : BuildState()
+}
+
+/**
+ * Maximum package ID length - must be <= template package ID length
+ * Template uses "com.appy.generated.webapp.placeholder.app" (44 chars)
+ */
+private const val MAX_PACKAGE_ID_LENGTH = 44
+
+/**
+ * Maximum app name length - must be <= template app name length
+ * Template uses "AppyGeneratedWebApplicationPlaceholderNameHere" (46 chars)
+ */
+private const val MAX_APP_NAME_LENGTH = 46
+
+/**
+ * Validates if a package ID follows Android naming conventions
+ */
+private fun isValidPackageId(packageId: String): Boolean {
+    if (packageId.isBlank()) return false
+    // Package ID must not exceed maximum length
+    if (packageId.length > MAX_PACKAGE_ID_LENGTH) return false
+    // Package ID must have at least two parts separated by dots
+    val parts = packageId.split(".")
+    if (parts.size < 2) return false
+    // Each part must start with a letter and contain only letters, digits, and underscores
+    val partPattern = Regex("^[a-z][a-z0-9_]*$")
+    return parts.all { it.isNotEmpty() && partPattern.matches(it) }
+}
+
+/**
+ * Validates if an app name is valid
+ */
+private fun isValidAppName(appName: String): Boolean {
+    if (appName.isBlank()) return false
+    if (appName.length > MAX_APP_NAME_LENGTH) return false
+    return true
 }
 
 /**
@@ -81,10 +158,28 @@ sealed class BuildState {
 @Composable
 fun HomeScreen(
     buildState: BuildState = BuildState.Idle,
-    onBuildClick: (String) -> Unit = {}
+    onBuildClick: (ApkConfig) -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     var url by remember { mutableStateOf("") }
+    var appName by remember { mutableStateOf("") }
+    var packageId by remember { mutableStateOf("com.appy.app") }
+    var iconUri by remember { mutableStateOf<Uri?>(null) }
+    var statusBarStyle by remember { mutableStateOf(StatusBarStyle.LIGHT) }
+    var statusBarDropdownExpanded by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val scrollState = rememberScrollState()
+    
+    // Validation states
+    val isPackageIdValid = isValidPackageId(packageId)
+    val isAppNameValid = isValidAppName(appName)
+
+    // Image picker launcher
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        iconUri = uri
+    }
 
     Scaffold(
         topBar = {
@@ -110,6 +205,15 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                     },
+                    actions = {
+                        IconButton(onClick = onSettingsClick) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = Color.Transparent
                     )
@@ -121,11 +225,12 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Headline text
             Text(
@@ -147,6 +252,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // URL Input
                     OutlinedTextField(
                         value = url,
                         onValueChange = { url = it },
@@ -162,14 +268,78 @@ fun HomeScreen(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Next
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        shape = MaterialTheme.shapes.large
+                    )
+
+                    // App Name Input
+                    OutlinedTextField(
+                        value = appName,
+                        onValueChange = { appName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("App Name") },
+                        placeholder = { Text("My App") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Label,
+                                contentDescription = "App Name"
+                            )
+                        },
+                        singleLine = true,
+                        isError = appName.isNotBlank() && !isAppNameValid,
+                        supportingText = if (appName.isNotBlank() && !isAppNameValid) {
+                            { 
+                                Text("App name too long (max $MAX_APP_NAME_LENGTH chars)") 
+                            }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Next
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        shape = MaterialTheme.shapes.large
+                    )
+
+                    // Package ID Input
+                    OutlinedTextField(
+                        value = packageId,
+                        onValueChange = { packageId = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Package ID") },
+                        placeholder = { Text("com.example.app") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = "Package ID"
+                            )
+                        },
+                        singleLine = true,
+                        isError = packageId.isNotBlank() && !isPackageIdValid,
+                        supportingText = if (packageId.isNotBlank() && !isPackageIdValid) {
+                            { 
+                                Text(
+                                    if (packageId.length > MAX_PACKAGE_ID_LENGTH) 
+                                        "Package ID too long (max $MAX_PACKAGE_ID_LENGTH chars)"
+                                    else 
+                                        "Use lowercase letters, numbers, underscores (e.g., com.example.app)"
+                                ) 
+                            }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Ascii,
                             imeAction = ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 keyboardController?.hide()
-                                if (url.isNotBlank()) {
-                                    onBuildClick(url)
-                                }
                             }
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -179,17 +349,133 @@ fun HomeScreen(
                         shape = MaterialTheme.shapes.large
                     )
 
+                    // Icon Picker
+                    Text(
+                        text = "App Icon",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .border(
+                                width = 2.dp,
+                                color = MaterialTheme.colorScheme.outline,
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .clickable { imagePickerLauncher.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (iconUri != null) {
+                            Image(
+                                painter = rememberAsyncImagePainter(iconUri),
+                                contentDescription = "Selected icon",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.AddPhotoAlternate,
+                                contentDescription = "Add icon",
+                                modifier = Modifier.size(32.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Status Bar Style Dropdown
+                    Text(
+                        text = "Status Bar Style",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    ExposedDropdownMenuBox(
+                        expanded = statusBarDropdownExpanded,
+                        onExpandedChange = { statusBarDropdownExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = statusBarStyle.displayName,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = statusBarDropdownExpanded) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            shape = MaterialTheme.shapes.large
+                        )
+                        ExposedDropdownMenu(
+                            expanded = statusBarDropdownExpanded,
+                            onDismissRequest = { statusBarDropdownExpanded = false }
+                        ) {
+                            StatusBarStyle.entries.forEach { style ->
+                                DropdownMenuItem(
+                                    text = { Text(style.displayName) },
+                                    onClick = {
+                                        statusBarStyle = style
+                                        statusBarDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Info note about customization
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Info",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Your custom app name, package ID, and icon will be applied to the generated APK. Each unique package ID allows a separate app installation.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     // Primary Compound Action Button for Build
                     PrimaryCompoundActionButton(
                         text = "Build APK",
-                        enabled = url.isNotBlank() && buildState is BuildState.Idle,
-                        onClick = { onBuildClick(url) }
+                        enabled = url.isNotBlank() && isAppNameValid && isPackageIdValid && 
+                                  (buildState is BuildState.Idle || buildState is BuildState.Success || buildState is BuildState.Error),
+                        onClick = {
+                            onBuildClick(
+                                ApkConfig(
+                                    url = url,
+                                    appName = appName,
+                                    packageId = packageId,
+                                    iconUri = iconUri,
+                                    statusBarStyle = statusBarStyle
+                                )
+                            )
+                        }
                     )
                 }
             }
 
             // Progress/Status section with morphing indicator
             BuildStatusSection(buildState = buildState)
+            
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -316,6 +602,34 @@ fun BuildStatusSection(buildState: BuildState) {
                         text = state.message,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            is BuildState.ReadyToSave -> {
+                // Waiting for user to select save location
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.tertiaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Save,
+                            contentDescription = "Save",
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                    Text(
+                        text = "Choose where to save your APK",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.tertiary
                     )
                 }
             }
