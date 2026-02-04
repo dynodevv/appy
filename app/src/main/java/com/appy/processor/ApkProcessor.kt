@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.android.apksig.ApkSigner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -19,11 +20,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.KeyStore
 import java.security.PrivateKey
-import java.security.Signature
 import java.security.cert.X509Certificate
-import java.util.jar.JarEntry
-import java.util.jar.JarOutputStream
-import java.util.jar.Manifest
 
 /**
  * Result sealed class for APK processing operations
@@ -41,7 +38,7 @@ sealed class ApkProcessingResult {
  * 1. Opens pre-compiled base-web-template.apk from assets
  * 2. Modifies assets/config.json with user's URL
  * 3. Injects custom icon if provided
- * 4. Signs the modified APK using bundled keystore
+ * 4. Signs the modified APK using bundled keystore with apksig library
  */
 class ApkProcessor(private val context: Context) {
 
@@ -98,8 +95,8 @@ class ApkProcessor(private val context: Context) {
 
             emit(ApkProcessingResult.Progress(0.8f, "Signing APK..."))
 
-            // Step 5: Sign the APK
-            val signedApk = signApk(outputFile)
+            // Step 5: Sign the APK using apksig library
+            val signedApk = signApkWithApkSig(outputFile)
             emit(ApkProcessingResult.Progress(0.9f, "APK signed"))
 
             // Cleanup template
@@ -243,10 +240,9 @@ class ApkProcessor(private val context: Context) {
                             zipFile.removeFile(path)
                         }
                         
-                        // Add new icon
+                        // Add new icon - use STORE method for PNG resources (no compression)
                         val zipParams = ZipParameters().apply {
-                            compressionMethod = CompressionMethod.DEFLATE
-                            compressionLevel = CompressionLevel.NORMAL
+                            compressionMethod = CompressionMethod.STORE
                             fileNameInZip = path
                         }
                         
@@ -268,13 +264,9 @@ class ApkProcessor(private val context: Context) {
     }
 
     /**
-     * Signs the APK using a debug keystore
-     * Note: For production, use a proper release keystore
+     * Signs the APK using the apksig library with proper v1 and v2 signatures
      */
-    private suspend fun signApk(apkFile: File): File = withContext(Dispatchers.IO) {
-        // For on-device signing, we use a simple JAR signing approach
-        // A full implementation would use android-apksig library
-
+    private suspend fun signApkWithApkSig(apkFile: File): File = withContext(Dispatchers.IO) {
         val signedApk = File(
             apkFile.parentFile,
             apkFile.nameWithoutExtension + "_signed.apk"
@@ -288,16 +280,32 @@ class ApkProcessor(private val context: Context) {
             val privateKey = keyStore.getKey(KEY_ALIAS, KEYSTORE_PASSWORD.toCharArray()) as PrivateKey
             val certificate = keyStore.getCertificate(KEY_ALIAS) as X509Certificate
 
-            // Sign using JAR signing (v1 signature)
-            signWithJarSigner(apkFile, signedApk, privateKey, certificate)
+            // Create signer config
+            val signerConfig = ApkSigner.SignerConfig.Builder(
+                "CERT",
+                privateKey,
+                listOf(certificate)
+            ).build()
+
+            // Create ApkSigner
+            val apkSigner = ApkSigner.Builder(listOf(signerConfig))
+                .setInputApk(apkFile)
+                .setOutputApk(signedApk)
+                .setV1SigningEnabled(true)
+                .setV2SigningEnabled(true)
+                .setV3SigningEnabled(false)
+                .build()
+
+            // Sign the APK
+            apkSigner.sign()
 
             // Delete unsigned APK
             apkFile.delete()
 
             signedApk
         } catch (e: Exception) {
-            // If signing fails, return unsigned APK
-            apkFile
+            // If signing fails, throw exception with detailed error info
+            throw RuntimeException("APK signing failed (${e.javaClass.simpleName}): ${e.message}", e)
         }
     }
 
@@ -307,84 +315,11 @@ class ApkProcessor(private val context: Context) {
     private fun loadKeyStore(): KeyStore {
         val keyStore = KeyStore.getInstance("JKS")
 
-        try {
-            context.assets.open(KEYSTORE_FILE).use { input ->
-                keyStore.load(input, KEYSTORE_PASSWORD.toCharArray())
-            }
-        } catch (e: Exception) {
-            // Create a default keystore if not found
-            keyStore.load(null, KEYSTORE_PASSWORD.toCharArray())
+        context.assets.open(KEYSTORE_FILE).use { input ->
+            keyStore.load(input, KEYSTORE_PASSWORD.toCharArray())
         }
 
         return keyStore
-    }
-
-    /**
-     * Signs the APK using JAR signing (v1 signature scheme)
-     */
-    private fun signWithJarSigner(
-        inputApk: File,
-        outputApk: File,
-        privateKey: PrivateKey,
-        certificate: X509Certificate
-    ) {
-        val manifest = Manifest()
-        manifest.mainAttributes.putValue("Manifest-Version", "1.0")
-        manifest.mainAttributes.putValue("Created-By", "Appy APK Generator")
-
-        ZipFile(inputApk).use { zipFile ->
-            JarOutputStream(FileOutputStream(outputApk), manifest).use { jarOut ->
-                zipFile.fileHeaders.forEach { header ->
-                    if (!header.fileName.startsWith("META-INF/")) {
-                        val entry = JarEntry(header.fileName)
-                        jarOut.putNextEntry(entry)
-
-                        zipFile.getInputStream(header).use { input ->
-                            input.copyTo(jarOut)
-                        }
-
-                        jarOut.closeEntry()
-                    }
-                }
-
-                // Add signature files
-                addSignatureFiles(jarOut, manifest, privateKey, certificate)
-            }
-        }
-    }
-
-    /**
-     * Adds META-INF signature files to the JAR
-     */
-    private fun addSignatureFiles(
-        jarOut: JarOutputStream,
-        manifest: Manifest,
-        privateKey: PrivateKey,
-        @Suppress("UNUSED_PARAMETER") certificate: X509Certificate
-    ) {
-        // Add MANIFEST.MF
-        val manifestEntry = JarEntry("META-INF/MANIFEST.MF")
-        jarOut.putNextEntry(manifestEntry)
-        manifest.write(jarOut)
-        jarOut.closeEntry()
-
-        // Create signature
-        val signature = Signature.getInstance("SHA256withRSA")
-        signature.initSign(privateKey)
-        signature.update(manifest.toString().toByteArray())
-        val signatureBytes = signature.sign()
-
-        // Add signature file
-        val sigEntry = JarEntry("META-INF/CERT.SF")
-        jarOut.putNextEntry(sigEntry)
-        jarOut.write("Signature-Version: 1.0\r\n".toByteArray())
-        jarOut.closeEntry()
-
-        // Add RSA file (simplified - real implementation needs PKCS7)
-        val rsaEntry = JarEntry("META-INF/CERT.RSA")
-        jarOut.putNextEntry(rsaEntry)
-        jarOut.write(signatureBytes)
-        jarOut.closeEntry()
     }
 
     /**

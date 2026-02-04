@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.zip4j)
     implementation(libs.coil.compose)
+    implementation(libs.apksig)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

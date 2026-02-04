@@ -7,6 +7,7 @@ activityCompose = "1.9.3"
 composeBom = "2024.12.01"
 zip4j = "2.11.5"
 coil = "2.5.0"
+apksig = "8.7.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -21,6 +22,7 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 zip4j = { group = "net.lingala.zip4j", name = "zip4j", version.ref = "zip4j" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+apksig = { group = "com.android.tools.build", name = "apksig", version.ref = "apksig" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
