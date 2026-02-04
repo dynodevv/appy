@@ -2,14 +2,17 @@ package com.webtemplate;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -184,6 +187,36 @@ public class MainActivity extends Activity {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
 
             webView.setWebViewClient(new WebViewClient() {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                    String url = request.getUrl().toString();
+                    return handleUrl(view, url);
+                }
+                
+                @Override
+                @SuppressWarnings("deprecation")
+                public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                    return handleUrl(view, url);
+                }
+                
+                private boolean handleUrl(WebView view, String url) {
+                    // Handle standard HTTP/HTTPS URLs in WebView
+                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                        return false; // Let WebView handle it
+                    }
+                    
+                    // Handle custom URL schemes by opening external apps
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                        return true;
+                    } catch (Exception e) {
+                        // No app to handle this URL scheme - try to show webpage
+                        return false;
+                    }
+                }
+                
                 @Override
                 public void onPageStarted(WebView view, String url, Bitmap favicon) {
                     super.onPageStarted(view, url, favicon);

@@ -311,96 +311,72 @@ class ApkProcessor(private val context: Context) {
 
         try {
             ZipFile(apkFile).use { zipFile ->
-                // Find all launcher icon files in the APK (mipmap directories)
-                // Android APKs often use paths like "res/mipmap-hdpi-v4/ic_launcher.png"
+                // Find ALL PNG files in mipmap directories
                 val allHeaders = zipFile.fileHeaders
+                val allPaths = allHeaders.map { it.fileName }
                 
                 // Log all entries for debugging
-                val allPaths = allHeaders.map { it.fileName }
-                val mipmapPaths = allPaths.filter { it.startsWith("res/mipmap-") }
-                Log.d("ApkProcessor", "All mipmap entries in APK: $mipmapPaths")
+                val mipmapPaths = allPaths.filter { it.startsWith("res/mipmap-") && it.endsWith(".png") }
+                Log.d("ApkProcessor", "All mipmap PNG entries in APK: $mipmapPaths")
                 
-                val iconPaths = allPaths
-                    .filter { path ->
-                        // Match mipmap icon paths for ic_launcher.png
-                        // Handles both "res/mipmap-hdpi/ic_launcher.png" and "res/mipmap-hdpi-v4/ic_launcher.png"
-                        path.startsWith("res/mipmap-") && 
-                        path.endsWith(".png") &&
-                        path.contains("ic_launcher") &&
-                        !path.contains("ic_launcher_round") &&
-                        !path.contains("foreground") &&
-                        !path.contains("background")
+                // Replace ALL mipmap PNG files (ic_launcher.png, ic_launcher_round.png, ic_launcher_foreground.png)
+                // This ensures the icon is definitely replaced
+                val pathsToReplace = mipmapPaths.associateWith { path ->
+                    when {
+                        path.contains("xxxhdpi") -> 192
+                        path.contains("xxhdpi") -> 144
+                        path.contains("xhdpi") -> 96
+                        path.contains("hdpi") -> 72
+                        path.contains("mdpi") -> 48
+                        else -> 96
                     }
-                
-                Log.d("ApkProcessor", "Found icon paths to replace: $iconPaths")
-                
-                // If no ic_launcher paths found, look for any mipmap PNG files
-                val pathsToReplace = if (iconPaths.isNotEmpty()) {
-                    iconPaths.associateWith { path ->
-                        when {
-                            path.contains("xxxhdpi") -> 192
-                            path.contains("xxhdpi") -> 144
-                            path.contains("xhdpi") -> 96
-                            path.contains("hdpi") -> 72
-                            path.contains("mdpi") -> 48
-                            else -> 96
-                        }
-                    }
-                } else {
-                    // Fallback to our predefined paths
-                    Log.d("ApkProcessor", "No dynamic paths found, using predefined ICON_SIZES")
-                    ICON_SIZES
                 }
                 
                 if (pathsToReplace.isEmpty()) {
-                    throw IllegalStateException("No icon paths found in APK to replace")
-                }
-                
-                Log.d("ApkProcessor", "Paths to replace with sizes: $pathsToReplace")
-                
-                // Process each icon path
-                for ((path, size) in pathsToReplace) {
-                    Log.d("ApkProcessor", "Processing icon: $path at size $size")
-                    
-                    // Scale bitmap to target size
-                    val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, size, size, true)
-                    
-                    // Convert to PNG bytes
-                    val outputStream = ByteArrayOutputStream()
-                    scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-                    val pngBytes = outputStream.toByteArray()
-                    
-                    Log.d("ApkProcessor", "Scaled icon size: ${pngBytes.size} bytes")
-                    
-                    // Write to temp file
-                    val tempFile = File(context.cacheDir, "icon_temp_${size}.png")
-                    tempFile.writeBytes(pngBytes)
-                    
-                    try {
-                        // Check if the path exists in the APK
-                        val existingHeader = zipFile.getFileHeader(path)
-                        if (existingHeader != null) {
-                            Log.d("ApkProcessor", "Removing existing icon at $path")
-                            // Remove existing icon
-                            zipFile.removeFile(path)
-                        } else {
-                            Log.d("ApkProcessor", "Path $path does not exist in APK, adding new")
-                        }
-                        
-                        // Add new icon - use STORE method for PNG resources (no compression)
-                        val zipParams = ZipParameters().apply {
-                            compressionMethod = CompressionMethod.STORE
-                            fileNameInZip = path
-                        }
-                        
-                        zipFile.addFile(tempFile, zipParams)
-                        Log.d("ApkProcessor", "Successfully added icon at $path")
-                    } finally {
-                        tempFile.delete()
+                    // Fallback: create icons at predefined paths
+                    Log.d("ApkProcessor", "No existing icon paths found, creating at predefined paths")
+                    for ((path, size) in ICON_SIZES) {
+                        createIconAt(zipFile, sourceBitmap, path, size)
                     }
+                } else {
+                    Log.d("ApkProcessor", "Replacing ${pathsToReplace.size} icon paths: ${pathsToReplace.keys}")
                     
-                    if (scaledBitmap != sourceBitmap) {
-                        scaledBitmap.recycle()
+                    // Process each icon path
+                    for ((path, size) in pathsToReplace) {
+                        Log.d("ApkProcessor", "Replacing icon at: $path (size: $size)")
+                        
+                        // Scale bitmap to target size
+                        val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, size, size, true)
+                        
+                        // Convert to PNG bytes
+                        val outputStream = ByteArrayOutputStream()
+                        scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                        val pngBytes = outputStream.toByteArray()
+                        
+                        // Write to temp file
+                        val tempFile = File(context.cacheDir, "icon_temp_${System.nanoTime()}.png")
+                        tempFile.writeBytes(pngBytes)
+                        
+                        try {
+                            // Remove existing icon - this MUST succeed since we got the path from the APK
+                            zipFile.removeFile(path)
+                            Log.d("ApkProcessor", "Removed existing file at $path")
+                            
+                            // Add new icon - use STORE method for PNG resources (no compression)
+                            val zipParams = ZipParameters().apply {
+                                compressionMethod = CompressionMethod.STORE
+                                fileNameInZip = path
+                            }
+                            
+                            zipFile.addFile(tempFile, zipParams)
+                            Log.d("ApkProcessor", "Added new icon at $path (${pngBytes.size} bytes)")
+                        } finally {
+                            tempFile.delete()
+                        }
+                        
+                        if (scaledBitmap != sourceBitmap) {
+                            scaledBitmap.recycle()
+                        }
                     }
                 }
                 
@@ -408,6 +384,43 @@ class ApkProcessor(private val context: Context) {
             }
         } finally {
             sourceBitmap.recycle()
+        }
+    }
+    
+    /**
+     * Creates an icon at the specified path in the APK
+     */
+    private fun createIconAt(zipFile: ZipFile, sourceBitmap: Bitmap, path: String, size: Int) {
+        val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, size, size, true)
+        
+        val outputStream = ByteArrayOutputStream()
+        scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+        val pngBytes = outputStream.toByteArray()
+        
+        val tempFile = File(context.cacheDir, "icon_temp_${System.nanoTime()}.png")
+        tempFile.writeBytes(pngBytes)
+        
+        try {
+            // Try to remove if exists
+            try {
+                zipFile.removeFile(path)
+            } catch (e: Exception) {
+                // Path doesn't exist, that's fine
+            }
+            
+            val zipParams = ZipParameters().apply {
+                compressionMethod = CompressionMethod.STORE
+                fileNameInZip = path
+            }
+            
+            zipFile.addFile(tempFile, zipParams)
+            Log.d("ApkProcessor", "Created icon at $path")
+        } finally {
+            tempFile.delete()
+        }
+        
+        if (scaledBitmap != sourceBitmap) {
+            scaledBitmap.recycle()
         }
     }
 
