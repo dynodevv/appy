@@ -68,7 +68,8 @@ class ApkProcessor(private val context: Context) {
         appName: String = "WebApp",
         packageId: String = "com.webapp.app",
         iconUri: Uri? = null,
-        statusBarDark: Boolean = false
+        statusBarDark: Boolean = false,
+        enableOfflineCache: Boolean = false
     ): Flow<ApkProcessingResult> = flow {
         try {
             emit(ApkProcessingResult.Progress(0.1f, "Preparing template..."))
@@ -84,7 +85,7 @@ class ApkProcessor(private val context: Context) {
             emit(ApkProcessingResult.Progress(0.3f, "Modifying configuration..."))
 
             // Step 3: Modify the APK (inject config.json)
-            modifyApk(templateFile, outputFile, url, appName, packageId, statusBarDark)
+            modifyApk(templateFile, outputFile, url, appName, packageId, statusBarDark, enableOfflineCache)
             emit(ApkProcessingResult.Progress(0.5f, "Configuration injected"))
 
             // Step 4: Inject custom icon if provided
@@ -174,7 +175,8 @@ class ApkProcessor(private val context: Context) {
         url: String,
         appName: String,
         packageId: String,
-        statusBarDark: Boolean
+        statusBarDark: Boolean,
+        enableOfflineCache: Boolean
     ) = withContext(Dispatchers.IO) {
         // Copy template to output location
         templateFile.copyTo(outputFile, overwrite = true)
@@ -185,6 +187,7 @@ class ApkProcessor(private val context: Context) {
             put("appName", appName)
             put("packageId", packageId)
             put("statusBarDark", statusBarDark)
+            put("enableOfflineCache", enableOfflineCache)
             put("generatedAt", System.currentTimeMillis())
             put("version", "1.0")
         }

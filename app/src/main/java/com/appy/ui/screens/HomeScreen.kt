@@ -59,6 +59,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -68,7 +69,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -96,7 +96,8 @@ data class ApkConfig(
     val appName: String,
     val packageId: String,
     val iconUri: Uri?,
-    val statusBarStyle: StatusBarStyle = StatusBarStyle.LIGHT
+    val statusBarStyle: StatusBarStyle = StatusBarStyle.LIGHT,
+    val enableOfflineCache: Boolean = false
 )
 
 /**
@@ -167,6 +168,7 @@ fun HomeScreen(
     var iconUri by remember { mutableStateOf<Uri?>(null) }
     var statusBarStyle by remember { mutableStateOf(StatusBarStyle.LIGHT) }
     var statusBarDropdownExpanded by remember { mutableStateOf(false) }
+    var enableOfflineCache by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val scrollState = rememberScrollState()
     
@@ -183,42 +185,30 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            // TopAppBar with blurred glass effect
-            Box {
-                // Background blur layer (simulated with semi-transparent surface)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .blur(16.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
-                ) {}
-
-                CenterAlignedTopAppBar(
-                    title = {
-                        // "Appy" branding with Display typography
-                        Text(
-                            text = "Appy",
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    },
-                    actions = {
-                        IconButton(onClick = onSettingsClick) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Transparent
+            CenterAlignedTopAppBar(
+                title = {
+                    // "Appy" branding with Display typography
+                    Text(
+                        text = "Appy",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.primary
                     )
+                },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                 )
-            }
+            )
         }
     ) { paddingValues ->
         Column(
@@ -427,6 +417,33 @@ fun HomeScreen(
                         }
                     }
 
+                    // Offline Cache Toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { enableOfflineCache = !enableOfflineCache }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Offline Cache",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Cache pages for offline use. Fresh content loads when online.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = enableOfflineCache,
+                            onCheckedChange = { enableOfflineCache = it }
+                        )
+                    }
+
                     // Info note about customization
                     Row(
                         modifier = Modifier
@@ -464,7 +481,8 @@ fun HomeScreen(
                                     appName = appName,
                                     packageId = packageId,
                                     iconUri = iconUri,
-                                    statusBarStyle = statusBarStyle
+                                    statusBarStyle = statusBarStyle,
+                                    enableOfflineCache = enableOfflineCache
                                 )
                             )
                         }
@@ -562,11 +580,11 @@ fun BuildStatusSection(buildState: BuildState) {
     AnimatedContent(
         targetState = buildState,
         transitionSpec = {
-            (fadeIn(animationSpec = tween(300, easing = emphasizedEasing)) +
-                scaleIn(animationSpec = tween(300, easing = emphasizedEasing), initialScale = 0.9f))
+            (fadeIn(animationSpec = tween(150, easing = emphasizedEasing)) +
+                scaleIn(animationSpec = tween(150, easing = emphasizedEasing), initialScale = 0.95f))
                 .togetherWith(
-                    fadeOut(animationSpec = tween(300, easing = emphasizedEasing)) +
-                        scaleOut(animationSpec = tween(300, easing = emphasizedEasing), targetScale = 0.9f)
+                    fadeOut(animationSpec = tween(150, easing = emphasizedEasing)) +
+                        scaleOut(animationSpec = tween(150, easing = emphasizedEasing), targetScale = 0.95f)
                 )
         },
         label = "buildStateTransition"
@@ -584,7 +602,7 @@ fun BuildStatusSection(buildState: BuildState) {
                 ) {
                     val animatedProgress by animateFloatAsState(
                         targetValue = state.progress,
-                        animationSpec = tween(300, easing = emphasizedEasing),
+                        animationSpec = tween(150, easing = emphasizedEasing),
                         label = "progressAnimation"
                     )
 

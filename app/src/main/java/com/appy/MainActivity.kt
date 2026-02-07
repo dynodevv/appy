@@ -122,26 +122,26 @@ class MainActivity : ComponentActivity() {
                     enterTransition = {
                         slideInHorizontally(
                             initialOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(200)
-                        ) + fadeIn(animationSpec = tween(150))
+                            animationSpec = tween(150)
+                        ) + fadeIn(animationSpec = tween(100))
                     },
                     exitTransition = {
                         slideOutHorizontally(
                             targetOffsetX = { fullWidth -> -fullWidth / 4 },
-                            animationSpec = tween(200)
-                        ) + fadeOut(animationSpec = tween(150))
+                            animationSpec = tween(150)
+                        ) + fadeOut(animationSpec = tween(100))
                     },
                     popEnterTransition = {
                         slideInHorizontally(
                             initialOffsetX = { fullWidth -> -fullWidth / 4 },
-                            animationSpec = tween(200)
-                        ) + fadeIn(animationSpec = tween(150))
+                            animationSpec = tween(150)
+                        ) + fadeIn(animationSpec = tween(100))
                     },
                     popExitTransition = {
                         slideOutHorizontally(
                             targetOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(200)
-                        ) + fadeOut(animationSpec = tween(150))
+                            animationSpec = tween(150)
+                        ) + fadeOut(animationSpec = tween(100))
                     }
                 ) {
                     composable("home") {
@@ -156,7 +156,8 @@ class MainActivity : ComponentActivity() {
                                         appName = config.appName,
                                         packageId = config.packageId,
                                         iconUri = config.iconUri,
-                                        statusBarDark = config.statusBarStyle == com.appy.ui.screens.StatusBarStyle.DARK
+                                        statusBarDark = config.statusBarStyle == com.appy.ui.screens.StatusBarStyle.DARK,
+                                        enableOfflineCache = config.enableOfflineCache
                                     ).collect { result ->
                                         when (result) {
                                             is ApkProcessingResult.Progress -> {
