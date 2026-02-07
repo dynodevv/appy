@@ -77,7 +77,7 @@ chmod +x gradlew
 
 ### Testing
 
-There are currently no automated tests in this repository. Manual testing is required:
+At the time of writing, there are no automated tests in this repository. Manual testing is required:
 1. Install the debug APK on an Android device/emulator (API 26+)
 2. Launch Appy app
 3. Enter a website URL (e.g., `https://example.com`)
@@ -177,7 +177,7 @@ There are currently no automated tests in this repository. Manual testing is req
 
 ## Known Issues
 
-- Custom icons don't work properly (documented in README.md)
+- Custom icons don't work properly: The icon injection feature is implemented but icons may not display correctly at all densities in the generated APKs
 
 ## Important Notes
 
