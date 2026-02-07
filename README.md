@@ -13,6 +13,7 @@ Turn any website into an APK, with a simple and easy-to-use UI.
 ## Known issues
 
 - Custom icons don't work
+- Offline caching is experimental and may not work correctly on some advanced or dynamic websites
 
 ## Technical Overview
 

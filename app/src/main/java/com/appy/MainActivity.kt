@@ -1,6 +1,7 @@
 package com.appy
 
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -9,11 +10,11 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -122,26 +123,26 @@ class MainActivity : ComponentActivity() {
                     enterTransition = {
                         slideInHorizontally(
                             initialOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(200)
-                        ) + fadeIn(animationSpec = tween(150))
+                            animationSpec = tween(300, easing = FastOutSlowInEasing)
+                        ) + fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
                     },
                     exitTransition = {
                         slideOutHorizontally(
                             targetOffsetX = { fullWidth -> -fullWidth / 4 },
-                            animationSpec = tween(200)
-                        ) + fadeOut(animationSpec = tween(150))
+                            animationSpec = tween(300, easing = FastOutSlowInEasing)
+                        ) + fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
                     },
                     popEnterTransition = {
                         slideInHorizontally(
                             initialOffsetX = { fullWidth -> -fullWidth / 4 },
-                            animationSpec = tween(200)
-                        ) + fadeIn(animationSpec = tween(150))
+                            animationSpec = tween(300, easing = FastOutSlowInEasing)
+                        ) + fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
                     },
                     popExitTransition = {
                         slideOutHorizontally(
                             targetOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(200)
-                        ) + fadeOut(animationSpec = tween(150))
+                            animationSpec = tween(300, easing = FastOutSlowInEasing)
+                        ) + fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
                     }
                 ) {
                     composable("home") {
@@ -156,7 +157,8 @@ class MainActivity : ComponentActivity() {
                                         appName = config.appName,
                                         packageId = config.packageId,
                                         iconUri = config.iconUri,
-                                        statusBarDark = config.statusBarStyle == com.appy.ui.screens.StatusBarStyle.DARK
+                                        statusBarDark = config.statusBarStyle == com.appy.ui.screens.StatusBarStyle.DARK,
+                                        enableOfflineCache = config.enableOfflineCache
                                     ).collect { result ->
                                         when (result) {
                                             is ApkProcessingResult.Progress -> {
@@ -209,45 +211,26 @@ class MainActivity : ComponentActivity() {
     
     /**
      * Updates the status bar appearance (icon color) based on the current theme.
-     * For light themes, uses dark icons. For dark themes, uses light icons.
-     * Also sets up appropriate scrim colors for predictive back gesture.
+     * Sets window background drawable for correct predictive-back gesture reveal color,
+     * and updates system bar icon appearance flags.
      */
     @Suppress("DEPRECATION")
     private fun updateStatusBarAppearance(isDarkTheme: Boolean) {
-        // Set window background color to match theme for predictive back gesture scrim
-        // This affects the "reveal" color during the back gesture animation
-        if (isDarkTheme) {
-            window.decorView.setBackgroundColor(Color.parseColor("#1C1B1F")) // Dark background
-            window.setNavigationBarColor(Color.parseColor("#1C1B1F"))
-        } else {
-            window.decorView.setBackgroundColor(Color.parseColor("#FEFBFF")) // Light background
-            window.setNavigationBarColor(Color.parseColor("#FEFBFF"))
-        }
-        
-        // Update edge-to-edge with appropriate system bar styles for the theme
-        if (isDarkTheme) {
-            enableEdgeToEdge(
-                statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-                navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
-            )
-        } else {
-            enableEdgeToEdge(
-                statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
-                navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-            )
-        }
+        // Set window background for predictive-back gesture reveal color.
+        // Uses window.setBackgroundDrawable() which is lighter weight than
+        // decorView.setBackgroundColor() (doesn't trigger full DecorView layout).
+        val bgColor = if (isDarkTheme) Color.parseColor("#1C1B1F") else Color.parseColor("#FEFBFF")
+        window.setBackgroundDrawable(ColorDrawable(bgColor))
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 if (isDarkTheme) {
-                    // Dark theme: clear the light appearance flag (use light/white icons)
                     controller.setSystemBarsAppearance(
                         0,
                         WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or 
                         WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                     )
                 } else {
-                    // Light theme: set light appearance flag (use dark icons)
                     controller.setSystemBarsAppearance(
                         WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
                         WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
@@ -257,7 +240,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } else {
-            // For older APIs
             if (isDarkTheme) {
                 window.decorView.systemUiVisibility = 
                     window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()

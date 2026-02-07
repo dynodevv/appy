@@ -2,9 +2,12 @@ package com.webtemplate;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -20,6 +23,7 @@ import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 
@@ -33,6 +37,9 @@ public class MainActivity extends Activity {
     private ProgressBar progressBar;
     private String targetUrl = "https://example.com";
     private boolean statusBarDark = false;
+    private boolean enableOfflineCache = false;
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,7 +59,18 @@ public class MainActivity extends Activity {
         
         // Load URL
         if (webView != null && targetUrl != null) {
-            webView.loadUrl(targetUrl);
+            if (enableOfflineCache && !isNetworkAvailable()) {
+                // Offline: try loading saved web archive first
+                File archive = getArchiveFile();
+                if (archive.exists()) {
+                    webView.loadUrl("file://" + archive.getAbsolutePath());
+                } else {
+                    // No archive saved yet, try loading URL with cache fallback
+                    webView.loadUrl(targetUrl);
+                }
+            } else {
+                webView.loadUrl(targetUrl);
+            }
         }
     }
     
@@ -89,10 +107,19 @@ public class MainActivity extends Activity {
                 String afterColon = jsonString.substring(colonIndex + 1).trim();
                 statusBarDark = afterColon.startsWith("true");
             }
+            
+            // Parse "enableOfflineCache" field
+            int cacheIndex = jsonString.indexOf("\"enableOfflineCache\"");
+            if (cacheIndex >= 0) {
+                int colonIndex = jsonString.indexOf(":", cacheIndex);
+                String afterColon = jsonString.substring(colonIndex + 1).trim();
+                enableOfflineCache = afterColon.startsWith("true");
+            }
         } catch (Exception e) {
             // Use defaults if config loading fails
             targetUrl = "https://example.com";
             statusBarDark = false;
+            enableOfflineCache = false;
         } finally {
             try {
                 if (reader != null) reader.close();
@@ -176,7 +203,6 @@ public class MainActivity extends Activity {
             settings.setJavaScriptEnabled(true);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
-            settings.setCacheMode(WebSettings.LOAD_DEFAULT);
             settings.setAllowFileAccess(true);
             settings.setAllowContentAccess(true);
             settings.setLoadWithOverviewMode(true);
@@ -185,6 +211,27 @@ public class MainActivity extends Activity {
             settings.setDisplayZoomControls(false);
             settings.setSupportZoom(true);
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            
+            // Fix Google login: remove WebView identifier ("wv") from user agent
+            // so Google doesn't block sign-in as an embedded browser
+            String defaultUserAgent = settings.getUserAgentString();
+            if (defaultUserAgent != null && defaultUserAgent.contains("; wv)")) {
+                settings.setUserAgentString(defaultUserAgent.replace("; wv)", ")"));
+            }
+
+            // Configure cache mode based on offline cache setting
+            if (enableOfflineCache) {
+                // Set initial cache mode based on current connectivity
+                if (isNetworkAvailable()) {
+                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                } else {
+                    settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                }
+                // Register callback to dynamically switch cache modes
+                registerNetworkCallback();
+            } else {
+                settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+            }
 
             webView.setWebViewClient(new WebViewClient() {
                 @Override
@@ -231,6 +278,12 @@ public class MainActivity extends Activity {
                     if (progressBar != null) {
                         progressBar.setVisibility(View.GONE);
                     }
+                    // Save web archive for offline use after page loads
+                    if (enableOfflineCache && isNetworkAvailable()) {
+                        try {
+                            view.saveWebArchive(getArchiveFile().getAbsolutePath());
+                        } catch (Exception ignored) {}
+                    }
                 }
             });
 
@@ -245,6 +298,90 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
             // Ignore WebView setup errors
         }
+    }
+    
+    /**
+     * Returns the file path for the offline web archive.
+     */
+    private File getArchiveFile() {
+        return new File(getFilesDir(), "offline_page.mht");
+    }
+    
+    /**
+     * Checks if the device currently has network connectivity.
+     */
+    private boolean isNetworkAvailable() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.net.Network network = cm.getActiveNetwork();
+                if (network == null) return false;
+                NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+                return caps != null && (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                        || caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                        || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
+            } else {
+                @SuppressWarnings("deprecation")
+                android.net.NetworkInfo info = cm.getActiveNetworkInfo();
+                return info != null && info.isConnected();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Registers a network callback to dynamically switch WebView cache modes
+     * when connectivity changes. This ensures offline caching works even when
+     * the network drops mid-session.
+     */
+    private void registerNetworkCallback() {
+        try {
+            connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivityManager == null) return;
+            
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(android.net.Network network) {
+                    // Default network available: load fresh content
+                    runOnUiThread(() -> {
+                        if (webView != null) {
+                            webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+                        }
+                    });
+                }
+                
+                @Override
+                public void onLost(android.net.Network network) {
+                    // Default network lost: serve cached content even if expired
+                    runOnUiThread(() -> {
+                        if (webView != null) {
+                            webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                        }
+                    });
+                }
+            };
+            
+            // minSdk=26 guarantees registerDefaultNetworkCallback is available (API 24+).
+            // This only fires when the default (active) network changes, avoiding
+            // spurious callbacks from secondary networks.
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        } catch (Exception ignored) {
+            // Fall back to static cache mode if callback registration fails
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        // Unregister network callback to prevent leaks
+        if (connectivityManager != null && networkCallback != null) {
+            try {
+                connectivityManager.unregisterNetworkCallback(networkCallback);
+            } catch (Exception ignored) {}
+        }
+        super.onDestroy();
     }
 
     @Override
