@@ -320,7 +320,7 @@ public class MainActivity extends Activity {
             networkCallback = new ConnectivityManager.NetworkCallback() {
                 @Override
                 public void onAvailable(android.net.Network network) {
-                    // Network available: load fresh content (HTTP caching still populates cache)
+                    // Default network available: load fresh content
                     runOnUiThread(() -> {
                         if (webView != null) {
                             webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
@@ -330,7 +330,7 @@ public class MainActivity extends Activity {
                 
                 @Override
                 public void onLost(android.net.Network network) {
-                    // Network lost: serve cached content even if expired
+                    // Default network lost: serve cached content even if expired
                     runOnUiThread(() -> {
                         if (webView != null) {
                             webView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
@@ -339,12 +339,10 @@ public class MainActivity extends Activity {
                 }
             };
             
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                connectivityManager.registerDefaultNetworkCallback(networkCallback);
-            } else {
-                android.net.NetworkRequest request = new android.net.NetworkRequest.Builder().build();
-                connectivityManager.registerNetworkCallback(request, networkCallback);
-            }
+            // minSdk=26 guarantees registerDefaultNetworkCallback is available (API 24+).
+            // This only fires when the default (active) network changes, avoiding
+            // spurious callbacks from secondary networks.
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
         } catch (Exception ignored) {
             // Fall back to static cache mode if callback registration fails
         }
